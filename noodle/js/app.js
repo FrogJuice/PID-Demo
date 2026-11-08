@@ -476,7 +476,8 @@
   let velShowTimer;
   function showVel(v) {
     if (settings.vel === 'fixed' || TR.state !== 'idle') return;
-    $('#counter').textContent = `vel ${v}` + (settings.vel === 'touch' ? ` · ${sense.used}` : '');
+    $('#counter').textContent = `vel ${v}`;
+    if (settings.vel === 'touch') VEL_HINTS.last = `Last tap: velocity ${v}, read from ${sense.used}.`;
     clearTimeout(velShowTimer);
     velShowTimer = setTimeout(() => { if (TR.state === 'idle') renderCounter(); }, 1600);
   }
@@ -749,7 +750,8 @@
   const VEL_HINTS = {
     fixed: 'Every note plays at the same velocity.',
     y: 'Lower on the key or pad = louder. Most reliable on any phone.',
-    touch: 'Uses how hard (3D Touch phones) or how much finger area you press. Many phones report neither, so it falls back to position. Tap a key: the counter shows what your phone reports.',
+    touch: 'Uses how hard (3D Touch phones) or how much finger area you press. Many phones report neither, so it falls back to position. Play a few notes, then reopen this menu to see what your phone reports.',
+    last: '',
   };
 
   function refreshSheet(id) {
@@ -758,7 +760,7 @@
       $$('#preset-grid .preset').forEach(b => b.classList.toggle('on', b.dataset.v === trk().preset));
       segSet('#seg-layout', settings.layout);
       segSet('#seg-vel', settings.vel);
-      $('#vel-hint').textContent = VEL_HINTS[settings.vel];
+      $('#vel-hint').textContent = VEL_HINTS[settings.vel] + (settings.vel === 'touch' && VEL_HINTS.last ? ' ' + VEL_HINTS.last : '');
     }
     if (id === '#sheet-key') {
       $$('#tonic-grid button').forEach(b => b.classList.toggle('on', !!take.key && +b.dataset.v === take.key.tonic));

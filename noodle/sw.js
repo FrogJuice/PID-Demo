@@ -1,5 +1,5 @@
 // Noodle service worker: cache the app shell so it opens offline.
-const VERSION = 'noodle-v2';
+const VERSION = 'noodle-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest',
   'js/theory.js', 'js/midi.js', 'js/audio.js', 'js/store.js', 'js/app.js',
   'icons/icon-192.png', 'icons/icon-180.png'];

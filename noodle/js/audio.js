@@ -62,7 +62,7 @@
   function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
   // MIDI velocity -> amplitude. About 26 dB between velocity 20 and 127,
   // which is roughly what a real piano or drum spans.
-  function velAmp(vel) { const v = Math.max(1, Math.min(127, vel)) / 127; return 0.05 + 0.95 * Math.pow(v, 1.8); }
+  function velAmp(vel) { const v = Math.max(1, Math.min(127, vel)) / 127; return 0.13 + 0.87 * Math.pow(v, 1.5); }
 
   function ensure() {
     if (ctx) return ctx;
@@ -147,7 +147,7 @@
       const car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain();
       car.frequency.value = f; mod.frequency.value = f * P.fm.ratio;
       const depth = f * P.fm.ratio;
-      mg.gain.setValueAtTime(depth * P.fm.index * (0.25 + 0.75 * v), t);
+      mg.gain.setValueAtTime(depth * P.fm.index * (0.4 + 0.6 * v), t);
       mg.gain.setTargetAtTime(depth * P.fm.indexEnd, t, P.fm.decay / 3);
       mod.connect(mg).connect(car.frequency);
       const cg = ctx.createGain(); cg.gain.value = 0.8;
@@ -166,7 +166,7 @@
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass'; lp.Q.value = F.q;
       const base = Math.min(18000, F.freq * kt);
-      const peak = Math.min(18000, Math.max(base, F.peak * kt * (0.2 + 0.8 * v * v)));
+      const peak = Math.min(18000, Math.max(base, F.peak * kt * (0.35 + 0.65 * v)));
       lp.frequency.setValueAtTime(peak, t);
       lp.frequency.setTargetAtTime(base, t, F.decay / 3);
       node.connect(lp); node = lp;
@@ -220,13 +220,14 @@
       o.connect(g); o.start(t); o.stop(t + dur);
     }
   }
-  const DRY = new Set([36, 38, 37, 39]);
+  // Reverb send per drum: kick and rim dry, snare and clap get a dash.
+  const SEND = { 36: 0.01, 37: 0.03, 38: 0.09, 39: 0.1 };
 
   function drumHit(note, vel, t) {
     const v = vel / 127;
     const out = ctx.createGain(); out.gain.value = PRESETS.drums.gain * velAmp(vel);
     out.connect(voiceBus);
-    const send = ctx.createGain(); send.gain.value = DRY.has(note) ? 0.015 : PRESETS.drums.verb; out.connect(send).connect(verbSend);
+    const send = ctx.createGain(); send.gain.value = SEND[note] != null ? SEND[note] : PRESETS.drums.verb; out.connect(send).connect(verbSend);
     const bp = (f, q) => { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; return b; };
     const hp = f => { const b = ctx.createBiquadFilter(); b.type = 'highpass'; b.frequency.value = f; return b; };
 
@@ -237,25 +238,26 @@
         o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.09);
         o.frequency.exponentialRampToValueAtTime(44, t + 0.45);
         const g = ctx.createGain();
-        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.25, t + 0.002);
-        g.gain.setTargetAtTime(0.75, t + 0.01, 0.06); g.gain.setTargetAtTime(0, t + 0.12, 0.13);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.05, t + 0.002);
+        g.gain.setTargetAtTime(0.63, t + 0.01, 0.06); g.gain.setTargetAtTime(0, t + 0.12, 0.13);
         o.connect(g).connect(sat); o.start(t); o.stop(t + 0.8);
         const sub = ctx.createOscillator(); sub.frequency.value = 46;
-        const sg = ctx.createGain(); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.45, t + 0.02); sg.gain.setTargetAtTime(0, t + 0.08, 0.12);
+        const sg = ctx.createGain(); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.38, t + 0.02); sg.gain.setTargetAtTime(0, t + 0.08, 0.12);
         sub.connect(sg).connect(out); sub.start(t); sub.stop(t + 0.8);
         const c = noise(t, 0.02); const cg = envGain(t, 0.3, 0.01); c.connect(bp(3500, 0.8)).connect(cg).connect(out);
         break;
       }
-      case 38: { // snare: fat body (two detuned shells) + short, mid-heavy wires, nearly dry
-        for (const [f0, f1, a] of [[215, 175, 0.8], [330, 290, 0.35]]) {
+      case 38: { // snare: stick crack + fast-dropping shells (soft-clipped) + wires
+        const sat = ctx.createWaveShaper(); sat.curve = curve(1.8); sat.connect(out);
+        const crack = noise(t, 0.012); const cg = envGain(t, 0.9, 0.008); crack.connect(bp(3200, 1.2)).connect(cg).connect(out);
+        for (const [f0, f1, a] of [[290, 185, 0.95], [420, 300, 0.35]]) {
           const o = ctx.createOscillator(); o.type = 'triangle';
-          o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.05);
-          const og = envGain(t, a, 0.11); o.connect(og).connect(out); o.start(t); o.stop(t + 0.2);
+          o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.025);
+          const og = envGain(t, a, 0.1); o.connect(og).connect(sat); o.start(t); o.stop(t + 0.2);
         }
-        const n = noise(t, 0.2);
-        const body = bp(1800, 0.7), air = hp(5000);
-        const g = envGain(t, 0.75, 0.13), ga = envGain(t, 0.22, 0.07);
-        n.connect(body).connect(g).connect(out); n.connect(air).connect(ga).connect(out);
+        const n = noise(t, 0.25);
+        const g = envGain(t, 0.8, 0.15), ga = envGain(t, 0.25, 0.08);
+        n.connect(bp(1900, 0.7)).connect(g).connect(out); n.connect(hp(5000)).connect(ga).connect(out);
         break;
       }
       case 37: { // rim
@@ -291,18 +293,22 @@
         const n = noise(t, 1.6); const ng = ctx.createGain(); ng.gain.value = 0.6; n.connect(ng).connect(f);
         break;
       }
-      case 51: { // ride: clean sine partials (bell + bow) over a quiet high shimmer
-        const partials = [[3080, 0.10, 1.6], [4310, 0.06, 1.2], [5470, 0.05, 1.0], [6950, 0.035, 0.8], [8820, 0.025, 0.7]];
-        for (const [fr, a, dec] of partials) {
-          const o = ctx.createOscillator(); o.frequency.value = fr * (1 + (Math.random() - 0.5) * 0.004);
-          const og = ctx.createGain(); og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(a, t + 0.002);
-          og.gain.setTargetAtTime(0, t + 0.003, dec / 3.5);
-          o.connect(og).connect(out); o.start(t); o.stop(t + dec * 1.6);
+      case 51: { // ride: long metallic wash (inharmonic square cluster + air) with a small stick ping
+        const wash = ctx.createGain();
+        wash.gain.setValueAtTime(0, t); wash.gain.linearRampToValueAtTime(0.2, t + 0.003);
+        wash.gain.setTargetAtTime(0.11, t + 0.004, 0.08); wash.gain.setTargetAtTime(0, t + 0.15, 0.9);
+        const band = bp(7800, 0.6), top = hp(5200), soft = ctx.createBiquadFilter();
+        soft.type = 'lowpass'; soft.frequency.value = 13000;
+        band.connect(top).connect(soft).connect(wash).connect(out);
+        const ratios = [2, 3, 4.16, 5.43, 6.79, 8.21];
+        for (const r of ratios) {
+          const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 310 * r * (1 + (Math.random() - 0.5) * 0.01);
+          const og = ctx.createGain(); og.gain.value = 0.16; o.connect(og).connect(band); o.start(t); o.stop(t + 3.5);
         }
-        const n = noise(t, 1.6); const ng = ctx.createGain();
-        ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(0.09, t + 0.002); ng.gain.setTargetAtTime(0, t + 0.01, 0.4);
-        n.connect(hp(9500)).connect(ng).connect(out);
-        const tick = noise(t, 0.01); const tg = envGain(t, 0.12, 0.006); tick.connect(bp(6000, 1)).connect(tg).connect(out);
+        const n = noise(t, 3); const ng = ctx.createGain(); ng.gain.value = 0.35; n.connect(hp(8500)).connect(ng).connect(wash);
+        const ping = ctx.createOscillator(); ping.frequency.value = 5100;
+        const pg = envGain(t, 0.035, 0.18); ping.connect(pg).connect(out); ping.start(t); ping.stop(t + 0.3);
+        const tick = noise(t, 0.01); const tg = envGain(t, 0.14, 0.006); tick.connect(bp(6500, 1)).connect(tg).connect(out);
         break;
       }
       case 45: case 47: case 50: { // toms

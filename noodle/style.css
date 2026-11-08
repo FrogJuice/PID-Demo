@@ -48,6 +48,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 #app {
   height: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(80px, 20%) auto auto 1fr;
   gap: 8px;
   padding: max(8px, env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right))
@@ -120,7 +121,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 body.playing #btn-play .i-play { display: none; }
 body.playing #btn-play .i-stop { display: block; }
 body.playing #btn-play { color: var(--amber); border-color: var(--amber); }
-.counter { flex: 1; text-align: center; font-size: 13px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.counter { flex: 1 1 0; text-align: center; font-size: 13px; line-height: 32px; height: 32px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.playing .counter { font-size: 22px; color: var(--fg); }
 .qbtn { min-width: 76px; }
 .qbtn.on { color: var(--amber); border-color: var(--amber); }
@@ -131,7 +132,7 @@ body.recording #app { grid-template-rows: minmax(70px, 16%) auto 1fr; }
 body.recording .tbtn.rec { flex: 1; background: var(--rec); border-color: var(--rec); color: #fff; height: 64px; }
 body.recording .tbtn.rec .dot { border-radius: 4px; background: #fff; }
 body.recording #btn-play { display: none; }
-body.recording .counter { color: var(--fg); font-size: 26px; flex: none; min-width: 84px; }
+body.recording .counter { color: var(--fg); font-size: 26px; flex: none; width: 116px; }
 
 /* sideways keys while recording (portrait phone, rotation lock friendly) */
 body.rot #app {
@@ -325,7 +326,7 @@ input[type=range] { width: 100%; accent-color: var(--amber); height: 32px; }
 /* ---------- landscape phones: give the keys the height ---------- */
 @media (orientation: landscape) and (max-height: 520px) {
   #app {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     grid-template-rows: auto minmax(48px, 18%) auto 1fr;
     grid-template-areas: "top strip" "roll roll" "tr oct" "kb kb";
     gap: 6px 10px;
@@ -335,7 +336,7 @@ input[type=range] { width: 100%; accent-color: var(--amber); height: 32px; }
   .take-name { font-size: 15px; max-width: 30vw; }
   .tbtn { height: 44px; }
   .kbbar { grid-area: oct; margin: 0; }
-  body.recording #app { grid-template-columns: 1fr; grid-template-areas: "roll" "tr" "kb"; }
+  body.recording #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "roll" "tr" "kb"; }
   body.recording #app { grid-template-rows: minmax(50px, 18%) auto 1fr; }
 }
 @media (min-width: 700px) {
