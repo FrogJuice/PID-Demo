@@ -108,13 +108,37 @@ test('key signatures', () => {
   assert.deepEqual(T.keySignature(5, 'major'), { sf: -1, mi: 0 });
 });
 
-test('midi writer emits a well-formed header and track', () => {
-  const bytes = M.writeMidi({ name: 'x', bpm: 120, num: 6, den: 8, notes: harmonicA, program: 0, keySig: { sf: 0, mi: 1 }, lengthQ: 12 });
+test('midi writer emits a well-formed type-1 file', () => {
+  const bytes = M.writeSong({ name: 'x', bpm: 120, num: 6, den: 8, keySig: { sf: 0, mi: 1 }, lengthQ: 12,
+    tracks: [{ name: 'a', notes: harmonicA, channel: 0, program: 0 }, { name: 'd', notes: [{ p: 36, t: 0, d: 0.25, v: 110 }], channel: 9 }] });
   assert.equal(String.fromCharCode(...bytes.slice(0, 4)), 'MThd');
-  assert.equal(String.fromCharCode(...bytes.slice(14, 18)), 'MTrk');
-  const len = (bytes[18] << 24) | (bytes[19] << 16) | (bytes[20] << 8) | bytes[21];
-  assert.equal(len, bytes.length - 22);
-  assert.deepEqual(Array.from(bytes.slice(-3)), [0xff, 0x2f, 0x00]);
+  assert.equal((bytes[8] << 8) | bytes[9], 1, 'format 1');
+  assert.equal((bytes[10] << 8) | bytes[11], 3, 'conductor + 2 tracks');
+  let o = 14, n = 0;
+  while (o < bytes.length) {
+    assert.equal(String.fromCharCode(...bytes.slice(o, o + 4)), 'MTrk');
+    const len = (bytes[o + 4] << 24) | (bytes[o + 5] << 16) | (bytes[o + 6] << 8) | bytes[o + 7];
+    assert.deepEqual(Array.from(bytes.slice(o + 8 + len - 3, o + 8 + len)), [0xff, 0x2f, 0x00]);
+    o += 8 + len; n++;
+  }
+  assert.equal(n, 3);
+});
+
+test('quantize leaves hand-placed notes alone and sorts by time', () => {
+  const out = T.quantizeNotes([{ p: 64, t: 2.1, d: 0.4, v: 90 }, { p: 60, t: 0.13, d: 0.4, v: 90, lock: true }],
+    { grid: '1/4', swing: 0.5, strength: 1 }, 4, 4, 8);
+  close(out[0].t, 0.13); close(out[1].t, 2);
+  const off = T.quantizeNotes([{ p: 64, t: 2, d: 1, v: 9 }, { p: 60, t: 1, d: 1, v: 9 }], { grid: 'off' }, 4, 4, 8);
+  assert.deepEqual(off.map(n => n.t), [1, 2]);
+});
+
+test('tension: tonic rests, outside notes are tensest', () => {
+  const t = pc => T.tension(pc, 9, 'minor');
+  assert.equal(t(9), 0);
+  assert.ok(t(4) < t(11), 'fifth calmer than second degree');
+  const inScale = [11, 0, 2, 4, 5, 7].map(t), outside = [10, 1, 3, 6, 8].map(t);
+  assert.ok(Math.max(...inScale) < Math.min(...outside));
+  assert.deepEqual(T.scaleNotes(57, 'minor', 9), [57, 59, 60, 62, 64, 65, 67, 69, 71]);
 });
 
 test('zip has correct crc and structure', () => {

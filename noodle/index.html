@@ -27,6 +27,9 @@
       <span class="take-name" id="take-name">New take</span>
       <span class="project-name" id="project-name">Ideas</span>
     </button>
+    <button class="icon-btn" id="btn-new" aria-label="New take">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
     <button class="chip chip-sound" id="btn-sound"><span id="sound-label">Pluck</span></button>
   </header>
 
@@ -34,6 +37,7 @@
     <button class="chip mono" id="chip-bpm">92 <small>BPM</small></button>
     <button class="chip mono" id="chip-meter">4/4</button>
     <button class="chip mono" id="chip-bars">4 <small>bars</small></button>
+    <button class="chip" id="chip-key">Key</button>
     <button class="chip toggle" id="chip-metro" aria-pressed="true" aria-label="Metronome">
       <svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5L9 3z"/><path d="M12 15l5-9"/></svg>
     </button>
@@ -46,7 +50,7 @@
   <div class="roll-wrap">
     <canvas id="roll"></canvas>
     <div class="countdown" id="countdown" hidden></div>
-    <div class="roll-empty" id="roll-empty">Hit record, play on the keys. Notes land here.</div>
+    <div class="roll-empty" id="roll-empty">Hit record, play on the keys. Notes land here. Tap here to edit.</div>
   </div>
 
   <!-- ===== transport ===== -->
@@ -59,6 +63,11 @@
       <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
     </button>
     <div class="counter mono" id="counter">1.1</div>
+    <div class="rec-oct show-rec">
+      <button class="icon-btn" id="rec-oct-down" aria-label="Octave down"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="oct mono" id="rec-oct-label">C4</span>
+      <button class="icon-btn" id="rec-oct-up" aria-label="Octave up"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
     <button class="tbtn qbtn hide-rec" id="btn-q" aria-label="Quantize">
       <span class="qgrid mono" id="q-label">Q off</span>
     </button>
@@ -84,21 +93,41 @@
 <!-- ===== sheets ===== -->
 <div class="scrim" id="scrim" hidden></div>
 
-<section class="sheet" id="sheet-sound" hidden aria-label="Sound">
-  <div class="sheet-head"><h2>Sound</h2><button class="close" data-close>Done</button></div>
+<section class="sheet" id="sheet-sound" hidden aria-label="Tracks and sound">
+  <div class="sheet-head"><h2>Tracks</h2><button class="close" data-close>Done</button></div>
+  <div class="track-list" id="track-list"></div>
+  <button class="wide-btn" id="btn-add-track">+ Add track</button>
+  <h3 class="sub">Sound for this track</h3>
   <div class="preset-grid" id="preset-grid"></div>
   <div class="row">
     <span class="lbl">Keys</span>
     <div class="seg" id="seg-layout">
-      <button data-v="piano">Piano</button><button data-v="pads">Pads</button>
+      <button data-v="piano">Piano</button><button data-v="pads">Pads</button><button data-v="scale">Scale pads</button>
     </div>
   </div>
   <div class="row">
     <span class="lbl">Velocity</span>
     <div class="seg" id="seg-vel">
-      <button data-v="fixed">Fixed</button><button data-v="y">Lower = louder</button>
+      <button data-v="fixed">Fixed</button><button data-v="y">Position</button><button data-v="touch">Touch</button>
     </div>
   </div>
+  <p class="hint" id="vel-hint"></p>
+</section>
+
+<section class="sheet" id="sheet-key" hidden aria-label="Key">
+  <div class="sheet-head"><h2>Key</h2><button class="close" data-close>Done</button></div>
+  <div class="tonic-grid" id="tonic-grid"></div>
+  <div class="mode-grid" id="mode-grid"></div>
+  <div class="two-btn">
+    <button class="wide-btn" id="key-detect">Detect from take</button>
+    <button class="wide-btn" id="key-off">No key</button>
+  </div>
+  <div class="row">
+    <span class="lbl">Key colors</span>
+    <div class="seg" id="seg-colors"><button data-v="1">On</button><button data-v="0">Off</button></div>
+  </div>
+  <div class="legend"><span class="sw rest"></span>Resting<span class="grad"></span>Tense<span class="sw tense"></span></div>
+  <p class="hint">Colors show how settled each note feels in the key: the tonic is calmest, notes outside the scale pull hardest. Scale pads lay out this key's notes only. The key is also written into exported MIDI.</p>
 </section>
 
 <section class="sheet" id="sheet-setup" hidden aria-label="Tempo and meter">
@@ -134,8 +163,12 @@
     <input type="range" id="click-vol" min="0" max="1" step="0.05" value="0.6" aria-label="Metronome volume">
   </div>
   <div class="row">
-    <span class="lbl">Recording</span>
-    <div class="seg" id="seg-overdub"><button data-v="new">New take</button><button data-v="add">Add to take</button></div>
+    <span class="lbl">Rec onto track</span>
+    <div class="seg" id="seg-recmode"><button data-v="layer">Layer</button><button data-v="replace">Replace</button><button data-v="new">New take</button></div>
+  </div>
+  <div class="row">
+    <span class="lbl">Landscape keys</span>
+    <div class="seg" id="seg-rotate"><button data-v="rec">While recording</button><button data-v="off">Off</button></div>
   </div>
   <div class="row">
     <span class="lbl">Latency fix</span>
@@ -144,7 +177,7 @@
       <span class="mono" id="latency-val">0 ms</span>
     </div>
   </div>
-  <p class="hint">Loop on: recording keeps cycling and layers every pass until you stop. If recorded notes land late, raise latency fix.</p>
+  <p class="hint">Layer adds to the current track while every track plays. Replace re-records the current track. Loop on: recording keeps cycling and layers every pass until you stop. Landscape keys turns the piano sideways while you record, so tip the phone left. If recorded notes land late, raise latency fix.</p>
 </section>
 
 <section class="sheet" id="sheet-q" hidden aria-label="Quantize">
@@ -177,6 +210,7 @@
   <label class="field"><span class="lbl">Project</span><select id="take-project"></select></label>
   <div class="take-key" id="take-key"></div>
   <div class="btn-list">
+    <button class="wide-btn" id="act-edit">Edit notes</button>
     <button class="wide-btn" id="act-export">Export MIDI</button>
     <button class="wide-btn" id="act-undo">Undo last pass</button>
     <button class="wide-btn" id="act-dup">Duplicate</button>
@@ -217,6 +251,34 @@
     <label class="chip file-chip">Restore backup<input type="file" id="restore-file" accept=".json,application/json"></label>
     <span class="store-note" id="store-note"></span>
   </footer>
+</section>
+
+<!-- ===== note editor ===== -->
+<section class="editor" id="editor" hidden aria-label="Note editor">
+  <header class="ed-head">
+    <button class="icon-btn" id="ed-back" aria-label="Done editing"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <select id="ed-track" aria-label="Track"></select>
+    <label class="ed-snap"><span>Snap</span><select id="ed-snap" aria-label="Snap"></select></label>
+    <button class="icon-btn" id="ed-undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button class="icon-btn ed-play" id="ed-play" aria-label="Play">
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>
+      <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+    </button>
+  </header>
+  <div class="ed-wrap"><canvas id="ed-canvas"></canvas></div>
+  <div class="ed-info mono" id="ed-info">Tap a note to select it. Double-tap empty space to add one.</div>
+  <div class="ed-tools">
+    <button class="tool" id="ed-left" aria-label="Earlier"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="tool" id="ed-right" aria-label="Later"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    <button class="tool" id="ed-up" aria-label="Pitch up"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></button>
+    <button class="tool" id="ed-down" aria-label="Pitch down"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
+    <button class="tool mono" id="ed-vdown" aria-label="Softer">v−</button>
+    <button class="tool mono" id="ed-vup" aria-label="Louder">v+</button>
+    <button class="tool danger" id="ed-del" aria-label="Delete note"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+    <span class="tool-gap"></span>
+    <button class="tool mono" id="ed-zout" aria-label="Zoom out">−</button>
+    <button class="tool mono" id="ed-zin" aria-label="Zoom in">+</button>
+  </div>
 </section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

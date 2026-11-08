@@ -14,45 +14,55 @@
   function u16(n) { return [(n >>> 8) & 255, n & 255]; }
   function text(s) { return Array.from(new TextEncoder().encode(s)); }
 
-  /**
-   * opts: {name, bpm, num, den, notes:[{p,t,d,v}] (quarters), channel (0-15),
-   *        program (0-127 or null), keySig: {sf, mi} | null, lengthQ}
-   * BPM counts the denominator unit; MIDI tempo is per quarter note, so convert.
-   */
-  function writeMidi(opts) {
-    const den = opts.den || 4;
-    const quarterBpm = opts.bpm * (4 / den); // quarter notes per minute
-    const usPerQuarter = Math.round(60000000 / quarterBpm);
-    const ch = opts.channel || 0;
-    const ev = []; // {tick, order, bytes}
-    const push = (tick, order, bytes) => ev.push({ tick: Math.max(0, Math.round(tick)), order, bytes });
-
-    push(0, 0, [0xff, 0x03, ...vlq(text(opts.name || 'Noodle').length), ...text(opts.name || 'Noodle')]);
-    push(0, 0, [0xff, 0x51, 0x03, (usPerQuarter >> 16) & 255, (usPerQuarter >> 8) & 255, usPerQuarter & 255]);
-    push(0, 0, [0xff, 0x58, 0x04, opts.num || 4, Math.log2(den), 24, 8]);
-    if (opts.keySig) push(0, 0, [0xff, 0x59, 0x02, opts.keySig.sf & 255, opts.keySig.mi]);
-    if (opts.program != null) push(0, 1, [0xc0 | ch, opts.program & 127]);
-
-    for (const n of opts.notes) {
-      const on = n.t * PPQ;
-      const off = Math.max(on + 1, (n.t + n.d) * PPQ);
-      const v = Math.max(1, Math.min(127, Math.round(n.v || 100)));
-      push(on, 3, [0x90 | ch, n.p & 127, v]);
-      push(off, 2, [0x80 | ch, n.p & 127, 0]); // offs sort before ons on the same tick
-    }
+  function trackChunk(ev, endTick) {
     ev.sort((a, b) => a.tick - b.tick || a.order - b.order);
-    const endTick = Math.max(opts.lengthQ ? opts.lengthQ * PPQ : 0, ev.length ? ev[ev.length - 1].tick : 0);
+    const last = ev.length ? ev[ev.length - 1].tick : 0;
+    const end = Math.max(Math.round(endTick || 0), last);
+    const out = [];
+    let prev = 0;
+    for (const e of ev) { out.push(...vlq(e.tick - prev), ...e.bytes); prev = e.tick; }
+    out.push(...vlq(end - prev), 0xff, 0x2f, 0x00);
+    return [...text('MTrk'), ...u32(out.length), ...out];
+  }
+  const meta = (type, bytes) => [0xff, type, ...vlq(bytes.length), ...bytes];
 
-    const track = [];
-    let last = 0;
-    for (const e of ev) { track.push(...vlq(e.tick - last), ...e.bytes); last = e.tick; }
-    track.push(...vlq(Math.round(endTick) - last), 0xff, 0x2f, 0x00);
-
-    const bytes = [
-      ...text('MThd'), ...u32(6), ...u16(0), ...u16(1), ...u16(PPQ),
-      ...text('MTrk'), ...u32(track.length), ...track,
+  /**
+   * Type-1 Standard MIDI File.
+   * song: {name, bpm, num, den, keySig: {sf, mi} | null, lengthQ,
+   *        tracks: [{name, notes: [{p,t,d,v}] (quarters), channel, program}]}
+   * BPM counts the denominator unit; MIDI tempo is per quarter note.
+   */
+  function writeSong(song) {
+    const den = song.den || 4;
+    const usPerQuarter = Math.round(60000000 / (song.bpm * (4 / den)));
+    const endTick = (song.lengthQ || 0) * PPQ;
+    const conductor = [
+      { tick: 0, order: 0, bytes: meta(0x03, text(song.name || 'Noodle')) },
+      { tick: 0, order: 0, bytes: [0xff, 0x51, 0x03, (usPerQuarter >> 16) & 255, (usPerQuarter >> 8) & 255, usPerQuarter & 255] },
+      { tick: 0, order: 0, bytes: [0xff, 0x58, 0x04, song.num || 4, Math.log2(den), 24, 8] },
     ];
-    return new Uint8Array(bytes);
+    if (song.keySig) conductor.push({ tick: 0, order: 0, bytes: [0xff, 0x59, 0x02, song.keySig.sf & 255, song.keySig.mi] });
+    const chunks = [trackChunk(conductor, endTick)];
+    for (const tr of song.tracks) {
+      const ch = tr.channel || 0, ev = [];
+      ev.push({ tick: 0, order: 0, bytes: meta(0x03, text(tr.name || 'Track')) });
+      if (tr.program != null) ev.push({ tick: 0, order: 1, bytes: [0xc0 | ch, tr.program & 127] });
+      for (const n of tr.notes) {
+        const on = Math.max(0, Math.round(n.t * PPQ));
+        const off = Math.max(on + 1, Math.round((n.t + n.d) * PPQ));
+        const v = Math.max(1, Math.min(127, Math.round(n.v || 100)));
+        ev.push({ tick: on, order: 3, bytes: [0x90 | ch, n.p & 127, v] });
+        ev.push({ tick: off, order: 2, bytes: [0x80 | ch, n.p & 127, 0] }); // offs before ons on a tick
+      }
+      chunks.push(trackChunk(ev, endTick));
+    }
+    const head = [...text('MThd'), ...u32(6), ...u16(1), ...u16(chunks.length), ...u16(PPQ)];
+    return new Uint8Array([...head, ...chunks.flat()]);
+  }
+
+  // Single-track convenience wrapper.
+  function writeMidi(o) {
+    return writeSong({ ...o, tracks: [{ name: o.name, notes: o.notes, channel: o.channel, program: o.program }] });
   }
 
   // ---- ZIP (store, no compression) ----
@@ -109,7 +119,7 @@
     return out;
   }
 
-  const api = { PPQ, writeMidi, zip, crc32 };
+  const api = { PPQ, writeMidi, writeSong, zip, crc32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NoodleMidi = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -60,14 +60,18 @@
   let openHat = null;
 
   function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  // MIDI velocity -> amplitude. About 26 dB between velocity 20 and 127,
+  // which is roughly what a real piano or drum spans.
+  function velAmp(vel) { const v = Math.max(1, Math.min(127, vel)) / 127; return 0.05 + 0.95 * Math.pow(v, 1.8); }
 
   function ensure() {
     if (ctx) return ctx;
     const AC = root.AudioContext || root.webkitAudioContext;
     ctx = new AC({ latencyHint: 'interactive' });
     comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -10; comp.knee.value = 8; comp.ratio.value = 4;
-    comp.attack.value = 0.003; comp.release.value = 0.15;
+    // Gentle safety limiter only: heavier settings flatten velocity.
+    comp.threshold.value = -4; comp.knee.value = 6; comp.ratio.value = 3;
+    comp.attack.value = 0.004; comp.release.value = 0.2;
     master = ctx.createGain(); master.gain.value = 0.9;
     comp.connect(master).connect(ctx.destination);
 
@@ -143,7 +147,7 @@
       const car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain();
       car.frequency.value = f; mod.frequency.value = f * P.fm.ratio;
       const depth = f * P.fm.ratio;
-      mg.gain.setValueAtTime(depth * P.fm.index * (0.6 + 0.4 * v), t);
+      mg.gain.setValueAtTime(depth * P.fm.index * (0.25 + 0.75 * v), t);
       mg.gain.setTargetAtTime(depth * P.fm.indexEnd, t, P.fm.decay / 3);
       mod.connect(mg).connect(car.frequency);
       const cg = ctx.createGain(); cg.gain.value = 0.8;
@@ -162,7 +166,7 @@
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass'; lp.Q.value = F.q;
       const base = Math.min(18000, F.freq * kt);
-      const peak = Math.min(18000, F.peak * kt * (0.5 + 0.5 * v));
+      const peak = Math.min(18000, Math.max(base, F.peak * kt * (0.2 + 0.8 * v * v)));
       lp.frequency.setValueAtTime(peak, t);
       lp.frequency.setTargetAtTime(base, t, F.decay / 3);
       node.connect(lp); node = lp;
@@ -172,7 +176,7 @@
     const send = ctx.createGain(); send.gain.value = P.verb;
     out.connect(send).connect(verbSend);
 
-    const A = P.amp, peakAmp = P.gain * (0.35 + 0.65 * v);
+    const A = P.amp, peakAmp = P.gain * velAmp(vel);
     out.gain.setValueAtTime(0, t);
     out.gain.linearRampToValueAtTime(peakAmp, t + A.a);
     out.gain.setTargetAtTime(peakAmp * A.s, t + A.a, A.d / 3);
@@ -208,35 +212,50 @@
     g.gain.exponentialRampToValueAtTime(0.0001, t + (attack || 0.001) + decay);
     return g;
   }
-  function metal(t, dur, dest) {
+  function metal(t, dur, dest, level) {
     const ratios = [2, 3, 4.16, 5.43, 6.79, 8.21];
+    const g = ctx.createGain(); g.gain.value = level == null ? 1 : level; g.connect(dest);
     for (const r of ratios) {
       const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 40 * r * 1.7;
-      o.connect(dest); o.start(t); o.stop(t + dur);
+      o.connect(g); o.start(t); o.stop(t + dur);
     }
   }
+  const DRY = new Set([36, 38, 37, 39]);
 
   function drumHit(note, vel, t) {
     const v = vel / 127;
-    const out = ctx.createGain(); out.gain.value = PRESETS.drums.gain * (0.3 + 0.7 * v);
+    const out = ctx.createGain(); out.gain.value = PRESETS.drums.gain * velAmp(vel);
     out.connect(voiceBus);
-    const send = ctx.createGain(); send.gain.value = PRESETS.drums.verb; out.connect(send).connect(verbSend);
+    const send = ctx.createGain(); send.gain.value = DRY.has(note) ? 0.015 : PRESETS.drums.verb; out.connect(send).connect(verbSend);
     const bp = (f, q) => { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; return b; };
     const hp = f => { const b = ctx.createBiquadFilter(); b.type = 'highpass'; b.frequency.value = f; return b; };
 
     switch (note) {
-      case 36: { // kick
+      case 36: { // kick: pitch-dropping body + sub tail + soft-clipped punch + beater
+        const sat = ctx.createWaveShaper(); sat.curve = curve(2.2); sat.connect(out);
         const o = ctx.createOscillator(); o.type = 'sine';
-        o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
-        const g = envGain(t, 1.1, 0.42); o.connect(g).connect(out); o.start(t); o.stop(t + 0.5);
-        const c = noise(t, 0.02); const cg = envGain(t, 0.25, 0.012); c.connect(hp(1500)).connect(cg).connect(out);
+        o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.09);
+        o.frequency.exponentialRampToValueAtTime(44, t + 0.45);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.25, t + 0.002);
+        g.gain.setTargetAtTime(0.75, t + 0.01, 0.06); g.gain.setTargetAtTime(0, t + 0.12, 0.13);
+        o.connect(g).connect(sat); o.start(t); o.stop(t + 0.8);
+        const sub = ctx.createOscillator(); sub.frequency.value = 46;
+        const sg = ctx.createGain(); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.45, t + 0.02); sg.gain.setTargetAtTime(0, t + 0.08, 0.12);
+        sub.connect(sg).connect(out); sub.start(t); sub.stop(t + 0.8);
+        const c = noise(t, 0.02); const cg = envGain(t, 0.3, 0.01); c.connect(bp(3500, 0.8)).connect(cg).connect(out);
         break;
       }
-      case 38: { // snare
-        const n = noise(t, 0.3); const g = envGain(t, 0.7, 0.2); n.connect(hp(1200)).connect(g).connect(out);
-        const o = ctx.createOscillator(); o.type = 'triangle';
-        o.frequency.setValueAtTime(240, t); o.frequency.exponentialRampToValueAtTime(170, t + 0.06);
-        const og = envGain(t, 0.6, 0.1); o.connect(og).connect(out); o.start(t); o.stop(t + 0.2);
+      case 38: { // snare: fat body (two detuned shells) + short, mid-heavy wires, nearly dry
+        for (const [f0, f1, a] of [[215, 175, 0.8], [330, 290, 0.35]]) {
+          const o = ctx.createOscillator(); o.type = 'triangle';
+          o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.05);
+          const og = envGain(t, a, 0.11); o.connect(og).connect(out); o.start(t); o.stop(t + 0.2);
+        }
+        const n = noise(t, 0.2);
+        const body = bp(1800, 0.7), air = hp(5000);
+        const g = envGain(t, 0.75, 0.13), ga = envGain(t, 0.22, 0.07);
+        n.connect(body).connect(g).connect(out); n.connect(air).connect(ga).connect(out);
         break;
       }
       case 37: { // rim
@@ -253,22 +272,37 @@
         break;
       }
       case 42: case 46: { // hats; closed chokes open
-        if (openHat) { try { holdAt(openHat.gain, t); openHat.gain.setTargetAtTime(0, t, 0.01); } catch (e) { /* gone */ } openHat = null; }
-        const dur = note === 42 ? 0.06 : 0.45;
-        const g = envGain(t, 0.35, dur);
-        const f = hp(7000); f.connect(g).connect(out);
-        metal(t, dur + 0.05, f);
-        const n = noise(t, dur + 0.05); const ng = ctx.createGain(); ng.gain.value = 0.25; n.connect(ng).connect(f);
-        if (note === 46) openHat = g;
+        if (openHat) { try { holdAt(openHat.gain, t); openHat.gain.setTargetAtTime(0, t, 0.012); } catch (e) { /* gone */ } openHat = null; }
+        const open = note === 46, dur = open ? 1.4 : 0.07;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(open ? 0.3 : 0.34, t + 0.001);
+        if (open) { g.gain.setTargetAtTime(0.17, t + 0.002, 0.05); g.gain.setTargetAtTime(0, t + 0.12, 0.32); }
+        else g.gain.setTargetAtTime(0, t + 0.002, 0.02);
+        const f = hp(open ? 6200 : 7200); f.connect(g).connect(out);
+        metal(t, dur, f, 0.55);
+        const n = noise(t, dur); const ng = ctx.createGain(); ng.gain.value = open ? 0.45 : 0.25; n.connect(ng).connect(f);
+        if (open) openHat = g;
         break;
       }
-      case 49: case 51: { // crash / ride
-        const crash = note === 49, dur = crash ? 1.6 : 1.0;
-        const g = envGain(t, crash ? 0.32 : 0.16, dur);
-        const f = crash ? hp(4500) : bp(8000, 0.8); f.connect(g).connect(out);
-        metal(t, dur, f);
-        const n = noise(t, dur); const ng = ctx.createGain(); ng.gain.value = crash ? 0.6 : 0.15; n.connect(ng).connect(f);
-        if (!crash) { const p = ctx.createOscillator(); p.frequency.value = 3200; const pg = envGain(t, 0.05, 0.5); p.connect(pg).connect(out); p.start(t); p.stop(t + 0.6); }
+      case 49: { // crash
+        const g = envGain(t, 0.32, 1.6);
+        const f = hp(4500); f.connect(g).connect(out);
+        metal(t, 1.6, f, 1);
+        const n = noise(t, 1.6); const ng = ctx.createGain(); ng.gain.value = 0.6; n.connect(ng).connect(f);
+        break;
+      }
+      case 51: { // ride: clean sine partials (bell + bow) over a quiet high shimmer
+        const partials = [[3080, 0.10, 1.6], [4310, 0.06, 1.2], [5470, 0.05, 1.0], [6950, 0.035, 0.8], [8820, 0.025, 0.7]];
+        for (const [fr, a, dec] of partials) {
+          const o = ctx.createOscillator(); o.frequency.value = fr * (1 + (Math.random() - 0.5) * 0.004);
+          const og = ctx.createGain(); og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(a, t + 0.002);
+          og.gain.setTargetAtTime(0, t + 0.003, dec / 3.5);
+          o.connect(og).connect(out); o.start(t); o.stop(t + dec * 1.6);
+        }
+        const n = noise(t, 1.6); const ng = ctx.createGain();
+        ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(0.09, t + 0.002); ng.gain.setTargetAtTime(0, t + 0.01, 0.4);
+        n.connect(hp(9500)).connect(ng).connect(out);
+        const tick = noise(t, 0.01); const tg = envGain(t, 0.12, 0.006); tick.connect(bp(6000, 1)).connect(tg).connect(out);
         break;
       }
       case 45: case 47: case 50: { // toms

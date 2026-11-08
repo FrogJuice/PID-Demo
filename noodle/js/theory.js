@@ -63,9 +63,10 @@
   function quantizeNotes(notes, q, num, den, loopLen) {
     const barLen = barQuarters(num, den);
     const g = GRIDS[q && q.grid];
-    if (!g || !g.cell || !(q.strength > 0)) return notes.map(n => ({ ...n }));
+    if (!g || !g.cell || !(q.strength > 0)) return sortByTime(notes.map(n => ({ ...n })));
     const s = clamp(q.strength, 0, 1);
-    return notes.map(n => {
+    return sortByTime(notes.map(n => {
+      if (n.lock) return { ...n };
       let t = n.t + s * (snap(n.t, q.grid, q.swing, barLen) - n.t);
       let d = n.d;
       if (q.ends) {
@@ -77,29 +78,30 @@
       if (t < 0) t = 0;
       if (loopLen) d = Math.min(d, Math.max(loopLen - t, 0.03));
       return { ...n, t, d };
-    });
+    }));
   }
+  function sortByTime(a) { return a.sort((x, y) => x.t - y.t || x.p - y.p); }
 
   // ---------- scales ----------
   const MODES = {
-    major:            { label: 'Major',             pcs: [0, 2, 4, 5, 7, 9, 11],  prior: 0.03 },
-    minor:            { label: 'Minor',             pcs: [0, 2, 3, 5, 7, 8, 10],  prior: 0.03 },
-    harmonicMinor:    { label: 'Harmonic minor',    pcs: [0, 2, 3, 5, 7, 8, 11],  prior: 0.015 },
-    melodicMinor:     { label: 'Melodic minor',     pcs: [0, 2, 3, 5, 7, 9, 11],  prior: 0.01 },
-    dorian:           { label: 'Dorian',            pcs: [0, 2, 3, 5, 7, 9, 10],  prior: 0.015 },
-    phrygian:         { label: 'Phrygian',          pcs: [0, 1, 3, 5, 7, 8, 10],  prior: 0.01 },
-    lydian:           { label: 'Lydian',            pcs: [0, 2, 4, 6, 7, 9, 11],  prior: 0.01 },
-    mixolydian:       { label: 'Mixolydian',        pcs: [0, 2, 4, 5, 7, 9, 10],  prior: 0.015 },
-    locrian:          { label: 'Locrian',           pcs: [0, 1, 3, 5, 6, 8, 10],  prior: 0.0 },
-    phrygianDominant: { label: 'Phrygian dominant', pcs: [0, 1, 4, 5, 7, 8, 10],  prior: 0.005 },
-    lydianDominant:   { label: 'Lydian dominant',   pcs: [0, 2, 4, 6, 7, 9, 10],  prior: 0.0 },
-    harmonicMajor:    { label: 'Harmonic major',    pcs: [0, 2, 4, 5, 7, 8, 11],  prior: 0.0 },
-    doubleHarmonic:   { label: 'Double harmonic',   pcs: [0, 1, 4, 5, 7, 8, 11],  prior: 0.0 },
-    hungarianMinor:   { label: 'Hungarian minor',   pcs: [0, 2, 3, 6, 7, 8, 11],  prior: 0.0 },
-    majorPentatonic:  { label: 'Major pentatonic',  pcs: [0, 2, 4, 7, 9],         prior: -0.01 },
-    minorPentatonic:  { label: 'Minor pentatonic',  pcs: [0, 3, 5, 7, 10],        prior: -0.01 },
-    blues:            { label: 'Blues',             pcs: [0, 3, 5, 6, 7, 10],     prior: -0.01 },
-    wholeTone:        { label: 'Whole tone',        pcs: [0, 2, 4, 6, 8, 10],     prior: -0.02 },
+    major:            { label: 'Major', short: 'maj',             pcs: [0, 2, 4, 5, 7, 9, 11],  prior: 0.03 },
+    minor:            { label: 'Minor', short: 'min',             pcs: [0, 2, 3, 5, 7, 8, 10],  prior: 0.03 },
+    harmonicMinor:    { label: 'Harmonic minor', short: 'harm min',    pcs: [0, 2, 3, 5, 7, 8, 11],  prior: 0.015 },
+    melodicMinor:     { label: 'Melodic minor', short: 'mel min',     pcs: [0, 2, 3, 5, 7, 9, 11],  prior: 0.01 },
+    dorian:           { label: 'Dorian', short: 'dorian',            pcs: [0, 2, 3, 5, 7, 9, 10],  prior: 0.015 },
+    phrygian:         { label: 'Phrygian', short: 'phryg',          pcs: [0, 1, 3, 5, 7, 8, 10],  prior: 0.01 },
+    lydian:           { label: 'Lydian', short: 'lydian',            pcs: [0, 2, 4, 6, 7, 9, 11],  prior: 0.01 },
+    mixolydian:       { label: 'Mixolydian', short: 'mixo',        pcs: [0, 2, 4, 5, 7, 9, 10],  prior: 0.015 },
+    locrian:          { label: 'Locrian', short: 'locrian',           pcs: [0, 1, 3, 5, 6, 8, 10],  prior: 0.0 },
+    phrygianDominant: { label: 'Phrygian dominant', short: 'phr dom', pcs: [0, 1, 4, 5, 7, 8, 10],  prior: 0.005 },
+    lydianDominant:   { label: 'Lydian dominant', short: 'lyd dom',   pcs: [0, 2, 4, 6, 7, 9, 10],  prior: 0.0 },
+    harmonicMajor:    { label: 'Harmonic major', short: 'harm maj',    pcs: [0, 2, 4, 5, 7, 8, 11],  prior: 0.0 },
+    doubleHarmonic:   { label: 'Double harmonic', short: 'dbl harm',   pcs: [0, 1, 4, 5, 7, 8, 11],  prior: 0.0 },
+    hungarianMinor:   { label: 'Hungarian minor', short: 'hung min',   pcs: [0, 2, 3, 6, 7, 8, 11],  prior: 0.0 },
+    majorPentatonic:  { label: 'Major pentatonic', short: 'maj pent',  pcs: [0, 2, 4, 7, 9],         prior: -0.01 },
+    minorPentatonic:  { label: 'Minor pentatonic', short: 'min pent',  pcs: [0, 3, 5, 7, 10],        prior: -0.01 },
+    blues:            { label: 'Blues', short: 'blues',             pcs: [0, 3, 5, 6, 7, 10],     prior: -0.01 },
+    wholeTone:        { label: 'Whole tone', short: 'whole',        pcs: [0, 2, 4, 6, 8, 10],     prior: -0.02 },
   };
   const MODE_ORDER = Object.keys(MODES);
 
@@ -256,10 +258,32 @@
     return rel === 11 || rel === 6 ? SHARPS[pc] : FLATS[pc]; // leading tone, #4
   }
 
+  // How tense (1) or resting (0) a pitch class feels in a key. Built from the
+  // Krumhansl–Kessler profile matching the mode's third, with scale tones kept
+  // well below chromatic ones so outside notes always read as the tensest.
+  function tension(pc, tonic, modeKey) {
+    const pcs = MODES[modeKey].pcs;
+    const rel = ((pc - tonic) % 12 + 12) % 12;
+    if (rel === 0) return 0;
+    const minor = pcs.includes(3) && !pcs.includes(4);
+    const prof = minor ? KK_MINOR : KK_MAJOR;
+    const lo = Math.min(...prof), hi = Math.max(...prof);
+    const n = (prof[rel] - lo) / (hi - lo);
+    const stability = pcs.includes(rel) ? 0.4 + 0.6 * n : 0.25 * n;
+    return clamp(1 - stability, 0, 1);
+  }
+
+  // Notes of a scale, ascending from MIDI note `from` (which should be a tonic).
+  function scaleNotes(tonicMidi, modeKey, count) {
+    const pcs = MODES[modeKey].pcs, out = [];
+    for (let i = 0; out.length < count; i++) out.push(tonicMidi + 12 * Math.floor(i / pcs.length) + pcs[i % pcs.length]);
+    return out;
+  }
+
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 
   const api = {
-    spellOutside,
+    spellOutside, tension, scaleNotes,
     NOTE_NAMES, GRIDS, GRID_ORDER, MODES, MODE_ORDER, W,
     quartersPerBeat, barQuarters, secPerQuarter,
     snap, quantizeNotes, analyze, keyMatch, estimateKey, keySignature, clamp,

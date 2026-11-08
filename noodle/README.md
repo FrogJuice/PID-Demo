@@ -6,12 +6,16 @@ It's a web app (PWA): one codebase for iPhone and Android, installable to the ho
 
 ## Features
 
-- **Keys:** one-octave piano (C to C) or a 4×3 pad grid. Octave shift, multi-touch, slide between keys. Optional velocity from where you hit the key (lower = louder).
+- **Keys:** one-octave piano (C to C), a 4×3 chromatic pad grid, or 16 **scale pads** that hold only the notes of the chosen key (about two octaves of a 7-note scale). Chords and multi-touch work, you can slide between keys, and the octave can shift while recording. Every point on the keyboard belongs to a key, so fast taps between keys still play.
+- **Key and colors:** pick a tonic and any of 18 scales. Keys and pads are tinted from teal (resting) through amber to red (tense), based on Krumhansl–Kessler stability, with notes outside the scale always the tensest.
+- **Velocity:** Fixed; Position (lower on the key = louder); or Touch, which uses 3D Touch force or finger contact size where the phone reports them and falls back to position where it doesn't. In Touch mode the counter shows what your phone reports.
 - **Sounds:** Pluck, Keys (FM electric piano), Pad, Fuzz (distorted), Bass, Bell, Drums (12 synthesized GM-mapped pieces). Each sound is synthesized live with Web Audio; there are no samples.
 - **Metronome:** 40–240 BPM, tap tempo, any meter from 1–15 over /4 or /8. Accents on the downbeat, plus the dotted-quarter groups in 6/8, 9/8 and 12/8. Optional 1-bar count-in and adjustable click volume.
-- **Recording:** 1, 2, 4 or 8 bars. In loop mode recording keeps cycling and layers every pass until you stop. You can record a new take each time or add onto the current one, and undo the last pass. Timing uses the audio output timestamp so device latency cancels out, and there's a manual latency slider for devices that report it wrong.
+- **Tracks:** each take holds several tracks (say, drums, bass and keys), and every unmuted track plays while you record the selected one. Each track has its own sound and quantize settings, and you can mute or delete tracks.
+- **Recording:** 1, 2, 4 or 8 bars. Layer adds to the current track, Replace re-records it, and New take starts a fresh take. In loop mode recording keeps cycling and layers every pass until you stop, and you can undo the last pass. In portrait the piano turns sideways while you record (tip the phone left), which also works with rotation lock on.
+- **Note editor:** tap the roll to open it. Pinch or use the zoom buttons, drag to scroll, drag a note to move it in time and pitch, drag its right end to resize, and drag in the velocity lane to set velocity. Double-tap to add a note. Nudge buttons step by the snap grid. Notes you place by hand are locked, so quantize leaves them alone. Undo is available. Timing uses the audio output timestamp so device latency cancels out, and there's a manual latency slider for devices that report it wrong.
 - **Quantize (non-destructive):** grids are 1/4, 1/8, 1/16, 1/32 and the triplets 1/4T, 1/8T, 1/16T. Swing runs 50–75% on 1/8 and 1/16, strength 0–100%, and note ends can optionally snap too. The grid restarts at each barline, so odd meters stay aligned. The roll shows what you actually played as an outline behind the quantized notes.
-- **MIDI export:** Type-0 SMF at 480 PPQ with tempo, time signature, the estimated key signature and a GM program. Drums go on channel 10. On phones it opens the share sheet (AirDrop, Files, a DAW), and whole projects export as a .zip.
+- **MIDI export:** Type-1 SMF at 480 PPQ with one MIDI track per Noodle track, plus tempo, time signature, the key signature (yours, or the estimated one) and GM programs. Drums go on channel 10. On phones it opens the share sheet (AirDrop, Files, a DAW), and whole projects export as a .zip.
 - **Projects and search:** group takes into projects, then search all takes by name, meter or BPM range, and sort by date, BPM, name or key match.
 - **Backup:** export or restore everything as JSON.
 
@@ -57,4 +61,4 @@ On a computer, the keys A W S E D F T G Y H U J K play C up to C, Space plays or
 
 - iOS Safari can drop site data after about 7 days without a visit unless the app is installed to the home screen. Install it, and use **Back up everything** now and then.
 - Touch-to-sound latency depends on the device. iPhones are usually tight, while many Android phones add a noticeable delay to what you hear. Recorded timing is compensated either way.
-- One sound per take. Layering drums under a melody (multi-track) isn't built yet.
+- There's no reliable way for a web page to read tap strength on most phones. Force is 0 without 3D Touch, contact size varies by phone, and the accelerometer would add latency. Position mode works everywhere.
